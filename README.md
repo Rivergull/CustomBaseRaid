@@ -1,32 +1,78 @@
-# MultiLoader Template
+# Custom Base Raid
 
-This project provides a Gradle project template that can compile Minecraft mods for multiple modloaders using a common project for the sources. This project does not require any third party libraries or dependencies. If you have any questions or want to discuss the project, please join our [Discord](https://discord.myceliummod.network).
+<p align="center">
+  <img src="icon.png" alt="Custom Base Raid Logo" width="200" height="200" />
+</p>
 
-## Getting Started
+<p align="center">
+  <strong>A customizable tower-defense raid experience for Minecraft! Defend your base against relentless waves of hostile mobs.</strong>
+</p>
 
-### IntelliJ IDEA
-This guide will show how to import the MultiLoader Template into IntelliJ IDEA. The setup process is roughly equivalent to setting up the modloaders independently and should be very familiar to anyone who has worked with their MDKs.
+<p align="center">
+  <a href="https://modrinth.com/project/custom-base-raid"><img src="https://img.shields.io/badge/Modrinth-Custom%20Base%20Raid-00AF5C?style=flat-square&logo=modrinth" alt="Modrinth" /></a>
+  <a href="https://www.curseforge.com/minecraft/mc-mods/custom-base-raid"><img src="https://img.shields.io/badge/CurseForge-Custom%20Base%20Raid-F16436?style=flat-square&logo=curseforge" alt="CurseForge" /></a>
+  <a href="https://github.com/Rivergull/CustomBaseRaid"><img src="https://img.shields.io/badge/GitHub-Repository-181717?style=flat-square&logo=github" alt="GitHub" /></a>
+  <img src="https://img.shields.io/badge/Minecraft-1.21.1-blue?style=flat-square" alt="Minecraft 1.21.1" />
+  <img src="https://img.shields.io/badge/Loaders-Fabric%20%7C%20NeoForge-orange?style=flat-square" alt="Fabric | NeoForge" />
+</p>
 
-1. Clone or download this repository to your computer.
-2. Configure the project by setting the properties in the `gradle.properties` file. You will also need to change the `rootProject.name`  property in `settings.gradle`, this should match the folder name of your project, or else IDEA may complain.
-3. Open the template's root folder as a new project in IDEA. This is the folder that contains this README.md file and the gradlew executable.
-4. If your default JVM/JDK is not Java 21 you will encounter an error when opening the project. This error is fixed by going to `File > Settings > Build, Execution, Deployment > Build Tools > Gradle > Gradle JVM` and changing the value to a valid Java 21 JVM. You will also need to set the Project SDK to Java 21. This can be done by going to `File > Project Structure > Project SDK`. Once both have been set open the Gradle tab in IDEA and click the refresh button to reload the project.
-5. Open your Run/Debug Configurations. Under the `Application` category there should now be options to run Fabric and NeoForge projects. Select one of the client options and try to run it.
-6. Assuming you were able to run the game in step 5 your workspace should now be set up.
+---
 
-### Eclipse
-While it is possible to use this template in Eclipse it is not recommended. During the development of this template multiple critical bugs and quirks related to Eclipse were found at nearly every level of the required build tools. While we continue to work with these tools to report and resolve issues support for projects like these are not there yet. For now Eclipse is considered unsupported by this project. The development cycle for build tools is notoriously slow so there are no ETAs available.
+## ⚔️ About The Mod
 
-## Development Guide
-When using this template the majority of your mod should be developed in the `common` project. The `common` project is compiled against the vanilla game and is used to hold code that is shared between the different loader-specific versions of your mod. The `common` project has no knowledge or access to ModLoader specific code, apis, or concepts. Code that requires something from a specific loader must be done through the project that is specific to that loader, such as the `fabric` or `neoforge` projects.
+**Custom Base Raid** turns your base into a defensive fortress! At dusk or scheduled days, hostile mobs spawn around your bed spawn point and prepare to attack. When the hunt begins, they track you down with relentless AI. 
 
-Loader specific projects such as the `fabric` and `neoforge` project are used to load the `common` project into the game. These projects also define code that is specific to that loader. Loader specific projects can access all the code in the `common` project. It is important to remember that the `common` project can not access code from loader specific projects.
+Survive every wave within the time limit to secure victory, earn EXP, and claim valuable rewards!
 
-## Removing Platforms and Loaders
-While this template has support for many modloaders, new loaders may appear in the future, and existing loaders may become less relevant.
+---
 
-Removing loader specific projects is as easy as deleting the folder, and removing the `include("projectname")` line from the `settings.gradle` file.
-For example if you wanted to remove support for `forge` you would follow the following steps:
+## 🌟 Key Features
 
-1. Delete the subproject folder. For example, delete `MultiLoader-Template/forge`.
-2. Remove the project from `settings.gradle`. For example, remove `include("forge")`. 
+- 🏰 **Base-Targeted Raids:** Raids spawn in a radius around your bed spawn point (or your current position if you haven't set a bed yet).
+- 🌊 **Multi-Wave Assaults:** Define unlimited waves per raid, each with custom mob combinations, group counts, wave-announcement messages, and intermission countdowns.
+- 🎯 **Advanced Hunt AI:** Raiders prepare during a configurable preparation window before locking onto the player and hunting them down across terrain.
+- 🔮 **Glowing Aura Highlighting:** When only a few monsters remain, they glow so you don't have to wander around searching for the last hidden enemy.
+- ⏱️ **Time Limits & Death Conditions:** Option to enforce strict time limits and fail the raid if you perish in battle.
+- 🚫 **No Sleeping Away the Danger:** Beds cannot be used while a base raid is active!
+- 🏆 **Configurable Rewards:** Award players custom quantities of EXP, item rewards, and execute custom server commands upon clearing a raid.
+- 📅 **Flexible Scheduling Modes:**
+  - **Scheduled:** Triggers specific custom raids on designated days (e.g. Day 3, Day 10, Day 25).
+  - **Periodic:** Automatically spawns a raid every *X* days.
+  - **Random:** A configurable daily percentage roll to trigger a surprise raid.
+- 🎖️ **Advancement Gating:** Require players to unlock milestones (e.g. *Diamonds!*) before specific raids can occur.
+- 🛠️ **In-Game Configuration GUI:** Powered by **Cloth Config**, featuring an interactive visual mob picker with search, live model previews, and instant saving.
+
+---
+
+## 🎮 Commands
+
+All commands require OP / permission level 2, and support both `/custombaseraid` and the shorthand `/cbr`:
+
+| Command | Description |
+| :--- | :--- |
+| `/cbr start [day]` | Starts a raid for your player (triggers the raid configured for `day`, or the default raid). |
+| `/cbr stop` | Stops the active raid currently targeting you and removes spawned raiders. |
+| `/cbr stopall` | Immediately terminates all active raids across the entire server. |
+| `/cbr reload` | Reloads `config/custombaseraid/config.json` without restarting Minecraft. |
+| `/cbr list` | Displays all configured raids, scheduled days, and wave counts. |
+| `/cbr status` | Shows current raid progression, active state, and remaining monsters. |
+
+---
+
+## ⚙️ Configuration
+
+The configuration file is generated automatically at `config/custombaseraid/config.json`. You can edit this file directly or configure everything in-game using the **Cloth Config** screen:
+
+- **Fabric:** Open via [Mod Menu](https://modrinth.com/mod/modmenu).
+- **NeoForge:** Open via the **Mods** menu in the game options.
+
+### Dependencies:
+- **Minecraft:** `1.21.1`
+- **Fabric:** Requires [Fabric API](https://modrinth.com/mod/fabric-api) & [Cloth Config API](https://modrinth.com/mod/cloth-config). [Mod Menu](https://modrinth.com/mod/modmenu) recommended for GUI config.
+- **NeoForge:** Requires [Cloth Config API](https://modrinth.com/mod/cloth-config).
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).

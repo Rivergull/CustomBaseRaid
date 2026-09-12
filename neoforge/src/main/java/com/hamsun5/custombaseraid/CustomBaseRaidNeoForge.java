@@ -16,9 +16,9 @@ import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 @Mod(Constants.MOD_ID)
-public class ExampleMod {
+public class CustomBaseRaidNeoForge {
 
-    public ExampleMod(IEventBus eventBus, ModContainer modContainer) {
+    public CustomBaseRaidNeoForge(IEventBus eventBus, ModContainer modContainer) {
         Constants.LOG.info("Initializing Custom Base Raid on NeoForge!");
         CommonClass.init();
 

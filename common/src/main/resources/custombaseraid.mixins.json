@@ -3,14 +3,12 @@
   "minVersion": "0.8",
   "package": "com.hamsun5.custombaseraid.mixin",
   "refmap": "${mod_id}.refmap.json",
-  "compatibilityLevel": "JAVA_18",
+  "compatibilityLevel": "JAVA_21",
   "mixins": [
     "MobAccessor",
     "MixinServerPlayer"
   ],
-  "client": [
-    "MixinMinecraft"
-  ],
+  "client": [],
   "server": [],
   "injectors": {
     "defaultRequire": 1
