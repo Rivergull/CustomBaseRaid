@@ -19,7 +19,7 @@ public abstract class MixinServerPlayer {
     private void custombaseraid$preventSleepDuringRaid(BlockPos at, CallbackInfoReturnable<Either<Player.BedSleepingProblem, Unit>> cir) {
         ServerPlayer player = (ServerPlayer) (Object) this;
         if (RaidManager.hasActiveRaid(player)) {
-            player.displayClientMessage(Component.literal("\u00a7cYou cannot sleep now! A custom base raid is active!"), true);
+            player.displayClientMessage(Component.literal("\u00a7cYou cannot sleep now! There is an active raid happening!"), true);
             cir.setReturnValue(Either.left(Player.BedSleepingProblem.OTHER_PROBLEM));
         }
     }

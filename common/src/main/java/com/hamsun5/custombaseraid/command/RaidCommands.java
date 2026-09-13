@@ -52,7 +52,7 @@ public class RaidCommands {
         if (source.getEntity() instanceof ServerPlayer player) {
             boolean stopped = RaidManager.stopActiveRaid(player);
             if (stopped) {
-                source.sendSuccess(() -> Component.literal("§aStopped active raid for " + player.getName().getString()), true);
+                source.sendSuccess(() -> Component.literal("\u00a7aStopped active raid for " + player.getName().getString()), true);
                 return 1;
             } else {
                 source.sendFailure(Component.literal("No active raid found for you."));
@@ -66,23 +66,24 @@ public class RaidCommands {
 
     private static int stopAllRaids(CommandSourceStack source) {
         RaidManager.stopAllRaids();
-        source.sendSuccess(() -> Component.literal("§aAll active raids stopped!"), true);
+        source.sendSuccess(() -> Component.literal("\u00a7aAll active raids stopped!"), true);
         return 1;
     }
 
     private static int reloadConfig(CommandSourceStack source) {
         ConfigManager.load();
-        source.sendSuccess(() -> Component.literal("§a[CustomBaseRaid] Config successfully reloaded!"), true);
+        source.sendSuccess(() -> Component.literal("\u00a7a[CustomBaseRaid] Config successfully reloaded!"), true);
         return 1;
     }
 
     private static int listRaids(CommandSourceStack source) {
         ModConfig config = ConfigManager.getConfig();
-        source.sendSuccess(() -> Component.literal("§6§l=== Configured Raids (" + config.scheduledRaids.size() + ") ==="), false);
+        source.sendSuccess(() -> Component.literal("\u00a76\u00a7l=== Configured Raids (" + config.scheduledRaids.size() + ") ==="), false);
         for (int i = 0; i < config.scheduledRaids.size(); i++) {
             ModConfig.RaidDefinition raid = config.scheduledRaids.get(i);
             int idx = i + 1;
-            source.sendSuccess(() -> Component.literal("§e" + idx + ". §f" + raid.name + " §7(Day " + raid.triggerDay + ", " + raid.warningTime + ") - " + raid.waves.size() + " Waves"), false);
+            String warningDesc = RaidManager.getWarningTimeDescription(raid.warningTime);
+            source.sendSuccess(() -> Component.literal("\u00a7e" + idx + ". \u00a7f" + raid.name + " \u00a77(Day " + raid.triggerDay + ", Warning: " + warningDesc + ") - " + raid.waves.size() + " Waves"), false);
         }
         return config.scheduledRaids.size();
     }
@@ -91,13 +92,45 @@ public class RaidCommands {
         if (source.getEntity() instanceof ServerPlayer player) {
             ActiveRaid raid = RaidManager.getActiveRaid(player.getUUID());
             if (raid != null) {
-                source.sendSuccess(() -> Component.literal("§eRaid Status: §a" + raid.getState()), false);
+                source.sendSuccess(() -> Component.literal("\u00a7eRaid Status: \u00a7a" + raid.getState()), false);
                 return 1;
             } else {
-                source.sendSuccess(() -> Component.literal("§7No active raid currently running for you."), false);
+                long currentDayTime = player.serverLevel().getDayTime();
+                int currentDay = (int) (currentDayTime / 24000L) + 1;
+                long timeOfDay = Math.floorMod(currentDayTime, 24000L);
+                ModConfig config = ConfigManager.getConfig();
+
+                source.sendSuccess(() -> Component.literal("\u00a77No active raid currently running for you."), false);
+                source.sendSuccess(() -> Component.literal("\u00a7eCurrent World: \u00a7fDay " + currentDay + " \u00a77(Time: " + timeOfDay + " ticks - " + getTimeOfDayDescription(timeOfDay) + ")"), false);
+                source.sendSuccess(() -> Component.literal("\u00a7eSchedule Mode: \u00a7f" + config.raidScheduleMode + " \u00a77(Raids Enabled: " + config.enableRaids + ")"), false);
+
+                if (config.scheduledRaids != null && !config.scheduledRaids.isEmpty()) {
+                    for (int i = 0; i < config.scheduledRaids.size(); i++) {
+                        ModConfig.RaidDefinition r = config.scheduledRaids.get(i);
+                        int finalI = i;
+                        String warnDesc = RaidManager.getWarningTimeDescription(r.warningTime);
+                        String dayInfo = switch (config.raidScheduleMode.toLowerCase().trim()) {
+                            case "periodic" -> "Every " + r.triggerDay + " Days";
+                            case "random" -> r.triggerDay + "% chance daily";
+                            default -> "Day " + r.triggerDay;
+                        };
+                        source.sendSuccess(() -> Component.literal("\u00a77- Raid #" + (finalI + 1) + " ('" + r.name + "'): " + dayInfo + " (Warning: " + warnDesc + ", Attack at Dusk)"), false);
+                    }
+                }
                 return 0;
             }
         }
         return 0;
+    }
+
+    private static String getTimeOfDayDescription(long timeOfDay) {
+        if (timeOfDay < 1000) return "Dawn";
+        if (timeOfDay < 6000) return "Morning";
+        if (timeOfDay < 9000) return "Noon";
+        if (timeOfDay < 12000) return "Afternoon";
+        if (timeOfDay < 13000) return "Dusk";
+        if (timeOfDay < 18000) return "Night";
+        if (timeOfDay < 23000) return "Midnight";
+        return "Pre-dawn";
     }
 }

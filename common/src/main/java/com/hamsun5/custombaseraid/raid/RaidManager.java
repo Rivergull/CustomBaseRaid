@@ -6,7 +6,6 @@ import com.hamsun5.custombaseraid.config.ModConfig;
 import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -16,6 +15,7 @@ import net.minecraft.world.level.Level;
 
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,8 +24,10 @@ public class RaidManager {
 
     private static final Map<UUID, ActiveRaid> ACTIVE_RAIDS = new ConcurrentHashMap<>();
     private static final Set<String> TRIGGERED_RAIDS = new HashSet<>();
+    private static final Set<String> WARNED_RAIDS = new HashSet<>();
     private static int lastRecordedDay = -1;
-    private static long lastCheckedDayTime = -1;
+
+    public static final long RAID_START_TIME = 12000L; // Dusk (sunset)
 
     public static boolean hasActiveRaid(ServerPlayer player) {
         if (player == null) return false;
@@ -51,6 +53,9 @@ public class RaidManager {
 
     public static void onServerStopping() {
         stopAllRaids();
+        TRIGGERED_RAIDS.clear();
+        WARNED_RAIDS.clear();
+        lastRecordedDay = -1;
     }
 
     public static void onServerTick(ServerLevel level) {
@@ -66,22 +71,28 @@ public class RaidManager {
         ModConfig config = ConfigManager.getConfig();
         if (!config.enableRaids || config.scheduledRaids == null || config.scheduledRaids.isEmpty()) return;
 
-        long currentDayTime = level.getDayTime();
-        int currentDay = (int) (currentDayTime / 24000L);
+        // Ensure players exist in the level before evaluating daily schedule triggers
+        if (level.players().isEmpty()) return;
 
-        // Reset daily trigger set on new day
+        long currentDayTime = level.getDayTime();
+        // 1-based day count (Day 1 is 0 - 23999 ticks, Day 2 is 24000 - 47999 ticks, etc.)
+        int currentDay = (int) (currentDayTime / 24000L) + 1;
+        long timeOfDay = Math.floorMod(currentDayTime, 24000L);
+
+        // Reset daily trigger sets on new day
         if (currentDay != lastRecordedDay) {
             TRIGGERED_RAIDS.clear();
+            WARNED_RAIDS.clear();
             lastRecordedDay = currentDay;
+            Constants.LOG.info("CustomBaseRaid: In-game Day is now Day {} (DayTime: {})", currentDay, currentDayTime);
         }
 
-        if (lastCheckedDayTime < 0) {
-            lastCheckedDayTime = currentDayTime;
-        }
-
-        long timeOfDay = currentDayTime % 24000L;
         String mode = (config.raidScheduleMode != null) ? config.raidScheduleMode.toLowerCase().trim() : "scheduled";
 
+        // 2. Check and trigger upcoming raid warnings
+        checkAndTriggerWarnings(level, config, currentDay, timeOfDay, mode);
+
+        // 3. Check and trigger scheduled raids at Dusk (12000 ticks)
         for (int i = 0; i < config.scheduledRaids.size(); i++) {
             ModConfig.RaidDefinition raidDef = config.scheduledRaids.get(i);
             String triggerKey = "day_" + currentDay + "_raid_" + i;
@@ -90,40 +101,141 @@ public class RaidManager {
                 continue;
             }
 
-            long targetTimeOfDay = parseTimeToTicks(raidDef.warningTime);
-            long targetAbsoluteTime = (long) currentDay * 24000L + targetTimeOfDay;
-            boolean isTimeWindow = currentDayTime >= targetAbsoluteTime && lastCheckedDayTime <= targetAbsoluteTime + 400;
-
-            if (!isTimeWindow) {
+            // Wait until Dusk (12000 ticks) for the raid to begin
+            if (timeOfDay < RAID_START_TIME) {
                 continue;
             }
 
-            switch (mode) {
-                case "periodic" -> {
-                    int interval = Math.max(1, raidDef.triggerDay);
-                    if (currentDay > 0 && currentDay % interval == 0) {
-                        TRIGGERED_RAIDS.add(triggerKey);
-                        triggerScheduledRaid(level, raidDef);
-                    }
-                }
-                case "random" -> {
-                    TRIGGERED_RAIDS.add(triggerKey);
-                    int chance = Math.min(100, Math.max(1, raidDef.triggerDay));
-                    int roll = level.random.nextInt(100);
-                    if (roll < chance) {
-                        triggerScheduledRaid(level, raidDef);
-                    }
-                }
-                default -> { // "scheduled"
-                    if (raidDef.triggerDay == currentDay) {
-                        TRIGGERED_RAIDS.add(triggerKey);
-                        triggerScheduledRaid(level, raidDef);
-                    }
-                }
+            boolean shouldTrigger = isRaidDay(currentDay, raidDef, mode, level);
+
+            // Mark this raid definition as evaluated for today so it doesn't trigger again today
+            TRIGGERED_RAIDS.add(triggerKey);
+
+            if (shouldTrigger) {
+                Constants.LOG.info("CustomBaseRaid: Triggering scheduled raid '{}' on Day {} (timeOfDay: {})",
+                        raidDef.name, currentDay, timeOfDay);
+                triggerScheduledRaid(level, raidDef);
             }
         }
+    }
 
-        lastCheckedDayTime = currentDayTime;
+    private static void checkAndTriggerWarnings(ServerLevel level, ModConfig config, int currentDay, long timeOfDay, String mode) {
+        for (int i = 0; i < config.scheduledRaids.size(); i++) {
+            ModConfig.RaidDefinition raidDef = config.scheduledRaids.get(i);
+            String warnKey = "warn_day_" + currentDay + "_raid_" + i;
+
+            if (WARNED_RAIDS.contains(warnKey)) {
+                continue;
+            }
+
+            String warnSetting = getWarningTimeId(raidDef.warningTime);
+            if ("disabled".equals(warnSetting) || "raid_start".equals(warnSetting)) {
+                continue;
+            }
+
+            boolean isWarningDay = false;
+            long targetWarnTime = 12000L;
+
+            switch (warnSetting) {
+                case "dusk_day_before" -> {
+                    targetWarnTime = 12000L; // Dusk
+                    isWarningDay = isDayBeforeRaid(currentDay, raidDef, mode, level);
+                }
+                case "dawn_day_before" -> {
+                    targetWarnTime = 0L; // Dawn
+                    isWarningDay = isDayBeforeRaid(currentDay, raidDef, mode, level);
+                }
+                case "dawn" -> {
+                    targetWarnTime = 0L; // Dawn on raid day
+                    isWarningDay = isRaidDay(currentDay, raidDef, mode, level);
+                }
+            }
+
+            if (isWarningDay && timeOfDay >= targetWarnTime) {
+                WARNED_RAIDS.add(warnKey);
+                broadcastRaidWarning(level, raidDef, config);
+            }
+        }
+    }
+
+    private static void broadcastRaidWarning(ServerLevel level, ModConfig.RaidDefinition raidDef, ModConfig config) {
+        String msg = (raidDef.warningMessage != null && !raidDef.warningMessage.trim().isEmpty())
+                ? raidDef.warningMessage.trim()
+                : "A hostile raid approaches your base! Prepare your defenses!";
+
+        Constants.LOG.info("CustomBaseRaid: Broadcasting upcoming raid warning for '{}': {}", raidDef.name, msg);
+
+        for (ServerPlayer player : level.players()) {
+            if (!meetsAdvancementRequirement(player, raidDef)) {
+                continue;
+            }
+
+            player.sendSystemMessage(Component.literal("\u00a76\u00a7l[Raid Warning] \u00a7e" + msg));
+            if (config.soundEffectsEnabled) {
+                player.playNotifySound(SoundEvents.RAID_HORN.value(), SoundSource.HOSTILE, 1.2F, 0.8F);
+            }
+        }
+    }
+
+    public static boolean isRaidDay(int currentDay, ModConfig.RaidDefinition raidDef, String mode, ServerLevel level) {
+        return switch (mode) {
+            case "periodic" -> {
+                int interval = Math.max(1, raidDef.triggerDay);
+                yield (currentDay % interval == 0);
+            }
+            case "random" -> {
+                int chance = Math.min(100, Math.max(1, raidDef.triggerDay));
+                long daySeed = level.getSeed() + ((long) currentDay * 31L) + (long) raidDef.name.hashCode();
+                Random dayRandom = new Random(daySeed);
+                yield (dayRandom.nextInt(100) < chance);
+            }
+            default -> (raidDef.triggerDay == currentDay); // "scheduled"
+        };
+    }
+
+    public static boolean isDayBeforeRaid(int currentDay, ModConfig.RaidDefinition raidDef, String mode, ServerLevel level) {
+        return switch (mode) {
+            case "periodic" -> {
+                int interval = Math.max(1, raidDef.triggerDay);
+                yield ((currentDay + 1) % interval == 0);
+            }
+            case "random" -> {
+                int chance = Math.min(100, Math.max(1, raidDef.triggerDay));
+                long nextDaySeed = level.getSeed() + ((long) (currentDay + 1) * 31L) + (long) raidDef.name.hashCode();
+                Random dayRandom = new Random(nextDaySeed);
+                yield (dayRandom.nextInt(100) < chance);
+            }
+            default -> {
+                if (raidDef.triggerDay <= 1) {
+                    yield (currentDay == 1);
+                }
+                yield (currentDay == raidDef.triggerDay - 1);
+            }
+        };
+    }
+
+    public static String getWarningTimeDescription(String warningTime) {
+        if (warningTime == null) return "Dusk (Day Before)";
+        String s = warningTime.trim().toLowerCase();
+        return switch (s) {
+            case "dusk_day_before", "dusk (day before)" -> "Dusk (Day Before)";
+            case "dawn_day_before", "dawn (day before)" -> "Dawn (Day Before)";
+            case "dawn", "dawn (day of raid)" -> "Dawn (Day of Raid)";
+            case "raid_start", "at raid start (dusk)" -> "At Raid Start (Dusk)";
+            case "disabled", "none" -> "Disabled";
+            case "dusk" -> "At Raid Start (Dusk)";
+            default -> "Dusk (Day Before)";
+        };
+    }
+
+    public static String getWarningTimeId(String desc) {
+        if (desc == null) return "dusk_day_before";
+        if (desc.startsWith("Dusk (Day Before")) return "dusk_day_before";
+        if (desc.startsWith("Dawn (Day Before")) return "dawn_day_before";
+        if (desc.startsWith("Dawn (Day of Raid")) return "dawn";
+        if (desc.startsWith("At Raid Start")) return "raid_start";
+        if (desc.startsWith("Disabled")) return "disabled";
+        return "dusk_day_before";
     }
 
     public static boolean meetsAdvancementRequirement(ServerPlayer player, ModConfig.RaidDefinition raidDef) {
@@ -141,7 +253,7 @@ public class RaidManager {
         return player.getAdvancements().getOrStartProgress(advHolder).isDone();
     }
 
-    private static long parseTimeToTicks(String timeStr) {
+    public static long parseTimeToTicks(String timeStr) {
         if (timeStr == null) return 12000L; // Default dusk
         String s = timeStr.trim().toLowerCase();
         return switch (s) {
@@ -227,7 +339,10 @@ public class RaidManager {
     private static BlockPos resolvePlayerBasePosition(ServerPlayer player, ServerLevel level) {
         BlockPos respawnPos = player.getRespawnPosition();
         if (respawnPos != null && player.getRespawnDimension() == level.dimension()) {
-            return respawnPos;
+            // If player is reasonably close (within 128 blocks) to their bed/respawn anchor, spawn near base
+            if (player.blockPosition().closerThan(respawnPos, 128.0)) {
+                return respawnPos;
+            }
         }
         return player.blockPosition();
     }

@@ -23,6 +23,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.GoalSelector;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.item.Item;
@@ -75,7 +76,7 @@ public class ActiveRaid {
         if (ConfigManager.getConfig().raidBossBar) {
             String raidName = (def.name != null && !def.name.isEmpty()) ? def.name : "Base Raid";
             this.bossBar = new ServerBossEvent(
-                    Component.literal("\u00a7c\u00a7l" + raidName),
+                    Component.literal("§c§l" + raidName),
                     BossEvent.BossBarColor.BLUE,
                     BossEvent.BossBarOverlay.PROGRESS
             );
@@ -97,7 +98,7 @@ public class ActiveRaid {
         String startMsg = (raidDef.warningMessage != null && !raidDef.warningMessage.isEmpty())
                 ? raidDef.warningMessage
                 : "The air grows cold... a raid is approaching!";
-        sendChatMessage("\u00a7c\u00a7l[" + getRaidDisplayName() + " Started] \u00a7e" + startMsg);
+        sendChatMessage("§c§l[" + getRaidDisplayName() + " Started] §e" + startMsg);
         playSound(SoundEvents.RAID_HORN.value(), 2.0F, 1.0F);
         updateBossBar();
     }
@@ -117,7 +118,7 @@ public class ActiveRaid {
                 ? wave.startMessage
                 : (waveName + " has spawned! (Hunting starts in " + raidDef.huntDelaySeconds + "s)");
 
-        sendChatMessage("\u00a7c[" + getRaidDisplayName() + "] \u00a7e" + waveMsg);
+        sendChatMessage("§c[" + getRaidDisplayName() + "] §e" + waveMsg);
         playSound(SoundEvents.WITHER_SPAWN, 1.0F, 1.2F);
 
         // Spawn mobs for this wave
@@ -192,7 +193,7 @@ public class ActiveRaid {
 
     private void startHunting() {
         this.state = RaidState.ACTIVE_COMBAT;
-        sendChatMessage("\u00a74[" + getRaidDisplayName() + "] \u00a7cThe raiding mobs have locked onto your location and are hunting you down!");
+        sendChatMessage("§4[" + getRaidDisplayName() + "] §cThe raiding mobs have locked onto your location and are hunting you down!");
         playSound(SoundEvents.ENDER_DRAGON_GROWL, 1.5F, 1.0F);
 
         for (Mob mob : aliveMobs) {
@@ -205,17 +206,26 @@ public class ActiveRaid {
 
     private void applyHuntAI(Mob mob) {
         try {
-            mob.setTarget(targetPlayer);
+            // 1. Boost follow range attribute so mob's native AI does not lose track of the player at long distance
+            var followRangeAttr = mob.getAttribute(Attributes.FOLLOW_RANGE);
+            if (followRangeAttr != null && followRangeAttr.getBaseValue() < 128.0) {
+                followRangeAttr.setBaseValue(128.0);
+            }
 
+            // 2. Add targeting goal without line-of-sight requirement to targetSelector (NOT goalSelector)
+            // This leaves the mob's attack goals, movement goals, and AI mod compatibility completely intact!
             if (mob instanceof MobAccessor accessor) {
-                GoalSelector goalSelector = accessor.custombaseraid$getGoalSelector();
                 GoalSelector targetSelector = accessor.custombaseraid$getTargetSelector();
-
-                goalSelector.addGoal(1, new HuntPlayerGoal(mob, targetPlayer, 1.25));
                 targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(mob, ServerPlayer.class, false));
             }
+
+            // 3. Directly assign target to the raided player
+            mob.setTarget(targetPlayer);
+
+            // 4. Provide an initial navigation path towards the player position
+            mob.getNavigation().moveTo(targetPlayer, 1.25);
         } catch (Exception e) {
-            Constants.LOG.warn("Could not apply advanced Hunt AI to {}: {}", mob.getType(), e.getMessage());
+            Constants.LOG.warn("Could not apply Hunt targeting to {}: {}", mob.getType(), e.getMessage());
         }
     }
 
@@ -275,11 +285,21 @@ public class ActiveRaid {
                     }
                 }
 
-                // Check periodic targeting reinforcement
-                if (level.getGameTime() % 40 == 0) {
+                // Check periodic targeting reinforcement and guide idle mobs
+                if (level.getGameTime() % 20 == 0) {
                     for (Mob mob : aliveMobs) {
-                        if (mob != null && mob.isAlive() && (mob.getTarget() == null || !mob.getTarget().isAlive())) {
-                            mob.setTarget(targetPlayer);
+                        if (mob != null && mob.isAlive()) {
+                            // Ensure target is still the player
+                            if (mob.getTarget() != targetPlayer) {
+                                mob.setTarget(targetPlayer);
+                            }
+                            // If mob is currently idle (no path) and far away from player (> 16 blocks),
+                            // nudge it with the player's current position so it doesn't get stuck.
+                            // If within 16 blocks, do not touch navigation so vanilla attack goals
+                            // (creeper swell, skeleton bow strafe, zombie melee, modded abilities) have 100% control!
+                            if (mob.getNavigation().isDone() && mob.distanceToSqr(targetPlayer) > 256.0) {
+                                mob.getNavigation().moveTo(targetPlayer, 1.25);
+                            }
                         }
                     }
                 }
@@ -304,7 +324,7 @@ public class ActiveRaid {
                 ? wave.clearMessage
                 : ("Wave " + (currentWaveIndex + 1) + " cleared!");
 
-        sendChatMessage("\u00a7a[" + getRaidDisplayName() + "] \u00a76" + clearMsg);
+        sendChatMessage("§a[" + getRaidDisplayName() + "] §6" + clearMsg);
         playSound(SoundEvents.PLAYER_LEVELUP, 1.0F, 1.2F);
 
         int nextWave = currentWaveIndex + 1;
@@ -315,7 +335,7 @@ public class ActiveRaid {
             int delay = Math.max(1, nextWaveConfig.delayBeforeWaveSeconds);
             this.intermissionTicks = delay * 20;
             this.maxIntermissionTicks = this.intermissionTicks;
-            sendChatMessage("\u00a7eNext wave arriving in " + delay + " seconds...");
+            sendChatMessage("§eNext wave arriving in " + delay + " seconds...");
             updateBossBar();
         } else {
             finishVictory();
@@ -339,7 +359,7 @@ public class ActiveRaid {
             int totalSecs = (remainingTicks + 19) / 20;
             int mins = totalSecs / 60;
             int secs = totalSecs % 60;
-            timeLimitStr = String.format(" | \u23f1 %02d:%02d", mins, secs);
+            timeLimitStr = String.format(" | ⏱ %02d:%02d", mins, secs);
         }
 
         if (state == RaidState.WAVE_INTERMISSION) {
@@ -350,7 +370,7 @@ public class ActiveRaid {
                     ? Math.max(0.0F, Math.min(1.0F, (float) intermissionTicks / (float) maxIntermissionTicks))
                     : 1.0F;
             bossBar.setProgress(progress);
-            String title = "\u00a7c\u00a7l" + getRaidDisplayName() + " \u00a77[" + waveLabel + " - Starting in " + countdownSecs + "s" + timeLimitStr + "]";
+            String title = "§c§l" + getRaidDisplayName() + " §7[" + waveLabel + " - Starting in " + countdownSecs + "s" + timeLimitStr + "]";
             bossBar.setName(Component.literal(title));
         } else if (state == RaidState.HUNT_COOLDOWN) {
             bossBar.setColor(BossEvent.BossBarColor.YELLOW);
@@ -360,7 +380,7 @@ public class ActiveRaid {
                     : 0.0F;
             bossBar.setProgress(progress);
             int huntSecs = Math.max(0, (huntCooldownTicks + 19) / 20);
-            String title = "\u00a7c\u00a7l" + getRaidDisplayName() + " \u00a77[" + waveLabel + " - " + aliveMobs.size() + " Left (Hunt in " + huntSecs + "s)" + timeLimitStr + "]";
+            String title = "§c§l" + getRaidDisplayName() + " §7[" + waveLabel + " - " + aliveMobs.size() + " Left (Hunt in " + huntSecs + "s)" + timeLimitStr + "]";
             bossBar.setName(Component.literal(title));
         } else if (state == RaidState.ACTIVE_COMBAT) {
             bossBar.setColor(BossEvent.BossBarColor.RED);
@@ -369,7 +389,7 @@ public class ActiveRaid {
                     ? Math.max(0.0F, Math.min(1.0F, (float) aliveMobs.size() / (float) totalMobsInCurrentWave))
                     : 0.0F;
             bossBar.setProgress(progress);
-            String title = "\u00a7c\u00a7l" + getRaidDisplayName() + " \u00a77[" + waveLabel + " - " + aliveMobs.size() + " Left" + timeLimitStr + "]";
+            String title = "§c§l" + getRaidDisplayName() + " §7[" + waveLabel + " - " + aliveMobs.size() + " Left" + timeLimitStr + "]";
             bossBar.setName(Component.literal(title));
         }
     }
@@ -379,7 +399,7 @@ public class ActiveRaid {
         String vicMsg = (raidDef.victoryMessage != null && !raidDef.victoryMessage.isEmpty())
                 ? raidDef.victoryMessage
                 : "Victory! You defended your base successfully!";
-        sendChatMessage("\u00a7a\u00a7l[" + getRaidDisplayName() + "] \u00a76" + vicMsg);
+        sendChatMessage("§a§l[" + getRaidDisplayName() + "] §6" + vicMsg);
         playSound(SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, 1.0F, 1.0F);
 
         // Grant rewards
@@ -392,7 +412,7 @@ public class ActiveRaid {
 
     public void finishDefeat(String reason) {
         this.state = RaidState.DEFEAT;
-        sendChatMessage("\u00a74\u00a7l[" + getRaidDisplayName() + " DEFEAT] \u00a7c" + reason);
+        sendChatMessage("§4§l[" + getRaidDisplayName() + " DEFEAT] §c" + reason);
         playSound(SoundEvents.WITHER_DEATH, 1.0F, 0.7F);
         cleanup();
     }
@@ -400,7 +420,7 @@ public class ActiveRaid {
     private void grantRewards() {
         if (raidDef.rewards.experiencePoints > 0) {
             targetPlayer.giveExperiencePoints(raidDef.rewards.experiencePoints);
-            sendChatMessage("\u00a7a+ Received " + raidDef.rewards.experiencePoints + " EXP!");
+            sendChatMessage("§a+ Received " + raidDef.rewards.experiencePoints + " EXP!");
         }
 
         for (ModConfig.ItemReward itemReward : raidDef.rewards.items) {
@@ -412,7 +432,7 @@ public class ActiveRaid {
                     if (!targetPlayer.getInventory().add(stack)) {
                         targetPlayer.drop(stack, false);
                     }
-                    sendChatMessage("\u00a7a+ Reward: " + itemReward.count + "x " + item.getDescription().getString());
+                    sendChatMessage("§a+ Reward: " + itemReward.count + "x " + item.getDescription().getString());
                 }
             } catch (Exception e) {
                 Constants.LOG.error("Failed to grant reward item {}: {}", itemReward.itemId, e.getMessage());

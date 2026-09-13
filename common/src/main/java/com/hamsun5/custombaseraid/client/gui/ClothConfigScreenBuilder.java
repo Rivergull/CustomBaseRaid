@@ -2,6 +2,7 @@ package com.hamsun5.custombaseraid.client.gui;
 
 import com.hamsun5.custombaseraid.config.ConfigManager;
 import com.hamsun5.custombaseraid.config.ModConfig;
+import com.hamsun5.custombaseraid.raid.RaidManager;
 import me.shedaniel.clothconfig2.api.ConfigBuilder;
 import me.shedaniel.clothconfig2.api.ConfigCategory;
 import me.shedaniel.clothconfig2.api.ConfigEntryBuilder;
@@ -169,52 +170,56 @@ public class ClothConfigScreenBuilder {
                 Component.literal("\u00a76--- Raid Settings Categories ---")
         ).build());
 
-        // 3. Sub-Category Navigation Buttons - all link back to the main tabbed screen!
+        // 3. Category Buttons leading to Sub-screens (Original Order)
+        // 1. Event Messages
         cat.addEntry(new ClothButtonEntry(
                 Component.literal("Event Messages:"),
-                Component.literal("\u00a7e\ud83d\udcac Event Messages >"),
-                200,
+                Component.literal("\u00a7d\u00a7l\ud83d\udcac Event Messages >"),
+                220,
                 () -> {
                     ConfigManager.save();
                     Minecraft.getInstance().setScreen(buildEventMessagesScreen(buildMainScreen(rootParent, tabName), raidIndex, rootParent, tabName));
                 }
         ));
 
+        // 2. Spawn & Time
         cat.addEntry(new ClothButtonEntry(
-                Component.literal("Spawn & Timers:"),
-                Component.literal("\u00a7e\u23f1 Spawn & Time >"),
-                200,
+                Component.literal("Spawn & Time:"),
+                Component.literal("\u00a7e\u00a7l\u23f0 Spawn & Time Settings >"),
+                220,
                 () -> {
                     ConfigManager.save();
                     Minecraft.getInstance().setScreen(buildSpawnTimeScreen(buildMainScreen(rootParent, tabName), raidIndex, rootParent, tabName));
                 }
         ));
 
+        // 3. Victory & Defeat
         cat.addEntry(new ClothButtonEntry(
-                Component.literal("Victory, Defeat & Rewards:"),
-                Component.literal("\u00a7e\ud83c\udfc6 Victory & Defeat >"),
-                200,
+                Component.literal("Victory & Defeat:"),
+                Component.literal("\u00a7a\u00a7l\ud83c\udfc6 Victory & Defeat Settings >"),
+                220,
                 () -> {
                     ConfigManager.save();
                     Minecraft.getInstance().setScreen(buildVictoryDefeatScreen(buildMainScreen(rootParent, tabName), raidIndex, rootParent, tabName));
                 }
         ));
 
+        // 4. Advancement Requirement
         cat.addEntry(new ClothButtonEntry(
-                Component.literal("Advancement Gate:"),
-                Component.literal("\u00a7e\ud83c\udf96 Advancement Requirement >"),
-                200,
+                Component.literal("Advancement:"),
+                Component.literal("\u00a7b\u00a7l\ud83d\udcdc Advancement Requirement >"),
+                220,
                 () -> {
                     ConfigManager.save();
                     Minecraft.getInstance().setScreen(buildAdvancementScreen(buildMainScreen(rootParent, tabName), raidIndex, rootParent, tabName));
                 }
         ));
 
-        int waveCount = raid.waves != null ? raid.waves.size() : 0;
+        // 5. Mobs & Waves
         cat.addEntry(new ClothButtonEntry(
-                Component.literal("Waves (" + waveCount + " configured):"),
-                Component.literal("\u00a7b\u00a7l\u2694 Waves Configuration >"),
-                200,
+                Component.literal("Mobs & Waves:"),
+                Component.literal("\u00a76\u00a7l\u2694 Mobs & Waves (" + (raid.waves != null ? raid.waves.size() : 0) + ") >"),
+                220,
                 () -> {
                     ConfigManager.save();
                     Minecraft.getInstance().setScreen(buildWavesListScreen(buildMainScreen(rootParent, tabName), raidIndex, rootParent, tabName));
@@ -225,11 +230,11 @@ public class ClothConfigScreenBuilder {
                 Component.literal("\u00a7c--- Danger Zone ---")
         ).build());
 
-        // 4. Delete Raid Button
+        // Delete Raid Button
         cat.addEntry(new ClothButtonEntry(
-                Component.literal("Remove This Raid:"),
-                Component.literal("\u00a7c\u00a7l\ud83d\uddd1 Delete Raid"),
-                200,
+                Component.literal("Delete Raid:"),
+                Component.literal("\u00a7c\u00a7l\ud83d\uddd1 Delete This Raid"),
+                220,
                 () -> {
                     ConfigManager.save();
                     if (raidIndex >= 0 && raidIndex < config.scheduledRaids.size()) {
@@ -257,9 +262,20 @@ public class ClothConfigScreenBuilder {
         ConfigEntryBuilder eb = builder.entryBuilder();
         ConfigCategory cat = builder.getOrCreateCategory(Component.literal("Messages"));
 
-        cat.addEntry(eb.startStrField(Component.literal("Warning Time"), raid.warningTime != null ? raid.warningTime : "dusk")
-                .setDefaultValue("dusk")
-                .setSaveConsumer(val -> raid.warningTime = val)
+        List<String> warningOptions = Arrays.asList(
+                "Dusk (Day Before)",
+                "Dawn (Day Before)",
+                "Dawn (Day of Raid)",
+                "At Raid Start (Dusk)",
+                "Disabled"
+        );
+        String currentWarningDesc = RaidManager.getWarningTimeDescription(raid.warningTime);
+
+        cat.addEntry(eb.startSelector(Component.literal("Warning Time"), warningOptions.toArray(new String[0]), currentWarningDesc)
+                .setDefaultValue("Dusk (Day Before)")
+                .setSaveConsumer(selected -> {
+                    raid.warningTime = RaidManager.getWarningTimeId(selected);
+                })
                 .build());
 
         cat.addEntry(eb.startStrField(Component.literal("Warning Message"), raid.warningMessage != null ? raid.warningMessage : "")
@@ -566,7 +582,7 @@ public class ClothConfigScreenBuilder {
     }
 
     // =========================================================================
-    // SUB-SCREEN: WAVE MOBS (List of mobs with count, reset, and small 🗑 button)
+    // SUB-SCREEN: WAVE MOBS (List of mobs with count, reset, and small \ud83d\uddd1 button)
     // =========================================================================
     public static Screen buildWaveMobsScreen(Screen parent, int raidIndex, int waveIndex) {
         ModConfig config = ConfigManager.getConfig();
@@ -633,7 +649,7 @@ public class ClothConfigScreenBuilder {
         ModConfig.RaidDefinition raid = new ModConfig.RaidDefinition();
         raid.name = "Raid #" + index;
         raid.triggerDay = index * 3;
-        raid.warningTime = "dusk";
+        raid.warningTime = "dusk_day_before";
         raid.warningMessage = "A hostile raid is targeting your base!";
         raid.victoryMessage = "Base defended successfully!";
         raid.defeatMessage = "Raid Failed! Base defenses collapsed.";

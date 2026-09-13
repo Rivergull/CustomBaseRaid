@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ModConfig {
-
     // Global Settings
     public boolean enableRaids = true;
     public int defaultHuntDelaySeconds = 15;
@@ -12,7 +11,7 @@ public class ModConfig {
     public boolean raidBossBar = true;
     public boolean failOnPlayerDeath = true;
 
-    // Schedule Modes: "scheduled", "periodic", "random"
+    // Trigger Mode: "scheduled" (fixed days), "periodic" (every X days), or "random" (daily chance %)
     public String raidScheduleMode = "scheduled";
     public int periodicIntervalDays = 3; // For periodic mode: triggers a raid every X days
     public int randomDailyChancePercent = 25; // For random mode: % chance each day to trigger a raid
@@ -25,7 +24,7 @@ public class ModConfig {
         RaidDefinition defaultRaid = new RaidDefinition();
         defaultRaid.name = "Base Raid";
         defaultRaid.triggerDay = 3;
-        defaultRaid.warningTime = "dusk";
+        defaultRaid.warningTime = "dusk_day_before";
         defaultRaid.warningMessage = "The air grows cold... a small raiding party is approaching!";
         defaultRaid.victoryMessage = "Base Defended! The raiders have retreated!";
         defaultRaid.defeatMessage = "Raid Failed! Base defenses collapsed.";
@@ -77,7 +76,7 @@ public class ModConfig {
     public static class RaidDefinition {
         public String name = "Base Raid";
         public int triggerDay = 3;
-        public String warningTime = "dusk";
+        public String warningTime = "dusk_day_before";
         public String warningMessage = "A hostile raid is targeting your base!";
         public String victoryMessage = "Base defended successfully!";
         public String defeatMessage = "Raid Failed! Base defenses collapsed.";

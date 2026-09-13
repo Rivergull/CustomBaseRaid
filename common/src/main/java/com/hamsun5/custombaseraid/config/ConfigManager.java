@@ -60,7 +60,7 @@ public class ConfigManager {
             if (raid.name == null || raid.name.isEmpty()) {
                 raid.name = "Custom Raid (" + raid.triggerDay + "d)";
             }
-            if (raid.warningTime == null) raid.warningTime = "dusk";
+            if (raid.warningTime == null) raid.warningTime = "dusk_day_before";
             if (raid.warningMessage == null) raid.warningMessage = "Your base is under attack!";
             if (raid.victoryMessage == null) raid.victoryMessage = "Victory! Base defended successfully!";
             if (raid.defeatMessage == null) raid.defeatMessage = "Raid Failed! Base defenses collapsed.";
